@@ -2,53 +2,46 @@
 Tests for retrieval service.
 """
 
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import numpy as np
 import pytest
 
 from backend.services.retrieval import (
-    BM25Retriever,
     DenseRetriever,
     HybridRetriever,
     Reranker,
+    RetrievalScore,
 )
 
 
 @pytest.mark.asyncio
 async def test_hybrid_retriever_rrf_scoring():
     """Test Reciprocal Rank Fusion scoring."""
-    retriever = HybridRetriever(
-        dense_retriever=DenseRetriever(embedding_service=None, qdrant_client=None),
-        bm25_retriever=BM25Retriever(None)
-    )
-    
-    # Mock results from two retrievers
+    dense_retriever = AsyncMock()
+    bm25_retriever = AsyncMock()
+    retriever = HybridRetriever(dense_retriever, bm25_retriever)
     dense_results = [
-        {"id": "doc1", "score": 0.95},
-        {"id": "doc2", "score": 0.85},
-        {"id": "doc3", "score": 0.75},
+        RetrievalScore("doc1", "document1", "content1", 0.95, {}),
+        RetrievalScore("doc2", "document2", "content2", 0.85, {}),
+        RetrievalScore("doc3", "document3", "content3", 0.75, {}),
     ]
-    
     bm25_results = [
-        {"id": "doc2", "score": 0.90},
-        {"id": "doc1", "score": 0.80},
-        {"id": "doc4", "score": 0.70},
+        RetrievalScore("doc2", "document2", "content2", 0.90, {}),
+        RetrievalScore("doc1", "document1", "content1", 0.80, {}),
+        RetrievalScore("doc4", "document4", "content4", 0.70, {}),
     ]
-    
-    # Calculate RRF scores manually
-    k = 60
-    doc1_rrf = 1/(k+1+1) + 1/(k+2+1)  # Rank 1 in dense, rank 2 in BM25
-    doc2_rrf = 1/(k+2+1) + 1/(k+1+1)  # Rank 2 in dense, rank 1 in BM25
-    doc3_rrf = 1/(k+3+1)              # Only in dense
-    doc4_rrf = 1/(k+3+1)              # Only in BM25
-    
-    assert doc1_rrf > 0
-    assert doc2_rrf > 0
-    assert doc3_rrf > 0
-    assert doc4_rrf > 0
-    assert doc1_rrf > doc3_rrf  # doc1 should rank higher
-    assert doc2_rrf > doc3_rrf  # doc2 should rank higher
+    dense_retriever.retrieve.return_value = dense_results
+    bm25_retriever.retrieve.return_value = bm25_results
+
+    results = await retriever.retrieve("query", "tenant", top_k=4)
+
+    assert {result.chunk_id for result in results[:2]} == {"doc1", "doc2"}
+    assert results[0].score == pytest.approx(1 / 61 + 1 / 62)
+    assert results[1].score == pytest.approx(1 / 61 + 1 / 62)
+    assert results[2].score == pytest.approx(1 / 63)
+    assert results[3].score == pytest.approx(1 / 63)
 
 
 def test_reranker_cross_encoder():
@@ -67,14 +60,17 @@ def test_reranker_cross_encoder():
 async def test_retriever_tenant_isolation():
     """Test that retriever respects tenant isolation."""
     tenant_id = uuid4()
-    
-    # Create a mock retriever
-    retriever = DenseRetriever(embedding_service=None, qdrant_client=None)
-    
-    # Retrievers should always filter by tenant_id
-    # This is a structural test - the actual retrieval
-    # would filter results by tenant_id
-    assert hasattr(retriever, 'embedding_service')
+    embedding_service = AsyncMock()
+    embedding_service.embed.return_value = [0.1, 0.2]
+    qdrant_client = AsyncMock()
+    qdrant_client.search.return_value = []
+    retriever = DenseRetriever(embedding_service, qdrant_client)
+
+    await retriever.retrieve("query", str(tenant_id))
+
+    query_filter = qdrant_client.search.call_args.kwargs["query_filter"]
+    assert query_filter["must"][0]["key"] == "tenant_id"
+    assert query_filter["must"][0]["match"]["value"] == str(tenant_id)
 
 
 def test_embedding_dimension():

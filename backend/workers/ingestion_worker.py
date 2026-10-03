@@ -95,7 +95,6 @@ class DocumentIngestionWorker:
         """Process a single ingestion message. Returns True if successful."""
         job_id = message.get("job_id")
         document_id = message.get("document_id")
-        tenant_id = message.get("tenant_id")
         
         logger.info(f"Processing job {job_id} for document {document_id}")
         
