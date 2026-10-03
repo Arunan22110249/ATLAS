@@ -20,7 +20,7 @@ sentence-transformers==2.2.2
 rank-bm25==0.2.2
 
 # ML & Embeddings
-torch==2.1.1
+torch==2.6.0
 transformers==4.35.2
 numpy==1.26.3
 
