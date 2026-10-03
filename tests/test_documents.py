@@ -87,7 +87,7 @@ async def test_document_deduplication(async_session):
         checksum
     )
     
-    assert is_dup is not None
+    assert is_dup.id == doc1.id
 
 
 @pytest.mark.asyncio
@@ -183,8 +183,14 @@ async def test_multi_tenant_isolation(async_session):
         doc_b.id,
         tenant_a
     )
+    doc_found = await DocumentService.get_document_by_id(
+        async_session,
+        doc_a.id,
+        tenant_a
+    )
     
     assert doc_not_found is None
+    assert doc_found.id == doc_a.id
 
 
 @pytest.mark.asyncio

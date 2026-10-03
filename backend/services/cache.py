@@ -138,7 +138,6 @@ class SemanticCache:
             return {}
         
         try:
-            info = await self._redis.info("stats")
             pattern = "rag:cache:*"
             keys = await self._redis.keys(pattern)
             

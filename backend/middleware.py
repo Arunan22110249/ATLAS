@@ -32,10 +32,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         current = await self.redis.get(key)
         if current is None:
             tokens = self.rpm
-            ttl = 60
         else:
             tokens = int(current)
-            ttl = await self.redis.ttl(key)
         
         # Check if request is allowed
         if tokens <= 0:

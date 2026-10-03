@@ -3,6 +3,7 @@ Authentication and user management service.
 """
 
 import hashlib
+import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -15,6 +16,7 @@ from backend.config import get_settings
 from backend.models import Tenant, TenantMembership, User, UserRole
 from backend.schemas import UserRegisterRequest
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
@@ -151,7 +153,7 @@ async def authenticate_user(
         if tenant_id:
             query = query.where(User.tenant_id == tenant_id)
         
-        query = query.where(User.is_active == True)
+        query = query.where(User.is_active.is_(True))
         
         result = await session.execute(query)
         user = result.scalars().first()
@@ -170,7 +172,7 @@ async def get_user_by_id(
 ) -> User | None:
     """Get user by ID."""
     result = await session.execute(
-        select(User).where(User.id == user_id).where(User.is_active == True)
+        select(User).where(User.id == user_id).where(User.is_active.is_(True))
     )
     return result.scalars().first()
 
