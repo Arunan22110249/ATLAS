@@ -1,0 +1,170 @@
+---
+# API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: atlas-api
+  labels:
+    app: atlas
+    component: api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: atlas
+      component: api
+  template:
+    metadata:
+      labels:
+        app: atlas
+        component: api
+    spec:
+      containers:
+      - name: api
+        image: atlas-api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: atlas-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: atlas-config
+              key: redis-url
+        - name: KAFKA_BROKERS
+          valueFrom:
+            configMapKeyRef:
+              name: atlas-config
+              key: kafka-brokers
+        - name: LLM_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: atlas-secrets
+              key: llm-api-key
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: atlas-api
+  labels:
+    app: atlas
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+  selector:
+    app: atlas
+    component: api
+
+---
+# Worker Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: atlas-worker-ingestion
+  labels:
+    app: atlas
+    component: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: atlas
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: atlas
+        component: worker
+    spec:
+      containers:
+      - name: worker
+        image: atlas-worker:latest
+        imagePullPolicy: Always
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: atlas-secrets
+              key: database-url
+        - name: KAFKA_BROKERS
+          valueFrom:
+            configMapKeyRef:
+              name: atlas-config
+              key: kafka-brokers
+        - name: WORKER_TYPE
+          value: "ingestion"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+
+---
+# ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atlas-config
+data:
+  redis-url: "redis://atlas-redis:6379/0"
+  kafka-brokers: "atlas-kafka:29092"
+  qdrant-url: "http://atlas-qdrant:6333"
+
+---
+# HorizontalPodAutoscaler for API
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: atlas-api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: atlas-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

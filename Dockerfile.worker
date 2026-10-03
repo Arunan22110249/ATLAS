@@ -1,0 +1,53 @@
+# Multi-stage Dockerfile for ATLAS Workers
+FROM python:3.12-slim as builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Create wheels
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements.txt
+
+
+# Production stage
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m -u 1000 appuser
+
+# Copy wheels from builder
+COPY --from=builder /build/wheels /wheels
+
+# Install Python dependencies
+RUN pip install --no-cache /wheels/*
+
+# Copy application code
+COPY backend /app/backend
+COPY backend/config.py /app/
+
+# Set ownership
+RUN chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+# Set PYTHONUNBUFFERED for logging
+ENV PYTHONUNBUFFERED=1
+
+# Default to ingestion worker
+ENV WORKER_TYPE=ingestion
+
+# Run worker
+CMD ["python", "-m", "backend.workers.ingestion_worker"]
