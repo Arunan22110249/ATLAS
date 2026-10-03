@@ -61,6 +61,7 @@ jobs:
       env:
         DATABASE_URL: postgresql://postgres:postgres@localhost/atlas_test
         REDIS_URL: redis://localhost:6379/0
+        JWT_SECRET: ci-test-secret-for-unit-tests-only
       run: |
         pytest tests/ -v --cov=backend --cov-report=xml
 

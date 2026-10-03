@@ -19,8 +19,8 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid as UUID,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
